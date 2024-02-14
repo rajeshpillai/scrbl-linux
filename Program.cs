@@ -20,6 +20,8 @@ public class DrawingWindow : Window
     private Drawable currentDrawing;
     private DrawMode currentMode = DrawMode.Pen;
 
+    private PointD? startPoint = null; // Track the start point for line drawing.
+
     public DrawingWindow() : base("Drawing Tools Example")
     {
         SetDefaultSize(800, 600);
@@ -68,29 +70,60 @@ public class DrawingWindow : Window
 
     private void OnButtonPressEvent(object o, ButtonPressEventArgs args)
     {
+       startPoint = new PointD(args.Event.X, args.Event.Y); // Set start point on button press.
+       if (currentMode == DrawMode.Line)
+       {
+          currentDrawing = new Drawable(DrawMode.Line);
+          currentDrawing.Points.Add(startPoint.Value);
+          drawings.Add(currentDrawing);
+      } 
+      else
+      {
+        // Handle other modes as before
         currentDrawing = new Drawable(currentMode);
         currentDrawing.Points.Add(new PointD(args.Event.X, args.Event.Y));
         drawings.Add(currentDrawing);
+      }
     }
 
     private void OnButtonReleaseEvent(object o, ButtonReleaseEventArgs args)
     {
-        if (currentMode == DrawMode.Line)
-        {
-            currentDrawing.Points.Add(new PointD(args.Event.X, args.Event.Y));
-            drawingArea.QueueDraw();
-        }
+      if (currentMode == DrawMode.Line && startPoint.HasValue)
+      {
+        // On releasing the button, finalize the line with the end point.
+        currentDrawing.Points.Add(new PointD(args.Event.X, args.Event.Y));
+        drawingArea.QueueDraw();
+        startPoint = null; // Reset the start point.
+      }
     }
 
     private void OnMotionNotifyEvent(object o, MotionNotifyEventArgs args)
     {
-        if ((currentMode == DrawMode.Freehand || currentMode == DrawMode.Pen) && args.Event.State.HasFlag(Gdk.ModifierType.Button1Mask))
+      if (currentMode == DrawMode.Freehand || currentMode == DrawMode.Pen)
+      {
+        if (args.Event.State.HasFlag(Gdk.ModifierType.Button1Mask))
         {
             currentDrawing.Points.Add(new PointD(args.Event.X, args.Event.Y));
             drawingArea.QueueDraw();
         }
+      }
+      else if (currentMode == DrawMode.Line && startPoint.HasValue)
+      {
+        // Update the temporary line drawing
+        if (currentDrawing.Points.Count > 1)
+        {
+            // Replace the temporary end point with the new position
+            currentDrawing.Points[1] = new PointD(args.Event.X, args.Event.Y);
+        }
+        else
+        {
+            // Add the temporary end point for the first time
+            currentDrawing.Points.Add(new PointD(args.Event.X, args.Event.Y));
+        }
+        drawingArea.QueueDraw();
+      }
     }
-
+    
     private enum DrawMode
     {
         Pen,
