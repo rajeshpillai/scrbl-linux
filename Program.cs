@@ -1,30 +1,58 @@
 using Gtk;
-using System;
 using Cairo;
+using System;
+using System.Collections.Generic;
 
-class Program
+public class DrawingApp
 {
     static void Main()
     {
         Application.Init();
-        MainWindow win = new MainWindow();
-        win.Show();
+        new DrawingWindow();
         Application.Run();
     }
 }
 
-class MainWindow : Window
+public class DrawingWindow : Window
 {
-    public MainWindow() : base("Drawing Example")
+    private DrawingArea drawingArea;
+    private List<Tuple<double, double>> points = new List<Tuple<double, double>>();
+    private DrawMode currentMode = DrawMode.Pen;
+
+    public DrawingWindow() : base("Drawing Tools Example")
     {
-        SetDefaultSize(400, 300);
+        SetDefaultSize(800, 600);
         SetPosition(WindowPosition.Center);
         DeleteEvent += delegate { Application.Quit(); };
 
-        DrawingArea drawingArea = new DrawingArea();
-        drawingArea.Drawn += OnDrawingAreaDrawn;
-        Add(drawingArea);
+        Box vbox = new Box(Orientation.Vertical, 0); // Updated to use Box with Orientation
+        Box hbox = new Box(Orientation.Horizontal, 0); // Updated to use Box with Orientation
 
+        Button penButton = new Button("Pen");
+        Button lineButton = new Button("Line");
+        Button freehandButton = new Button("Freehand");
+
+        penButton.Clicked += (sender, e) => currentMode = DrawMode.Pen;
+        lineButton.Clicked += (sender, e) => currentMode = DrawMode.Line;
+        freehandButton.Clicked += (sender, e) => currentMode = DrawMode.Freehand;
+
+        // Updated PackStart calls with required arguments
+        hbox.PackStart(penButton, expand: false, fill: false, padding: 0);
+        hbox.PackStart(lineButton, expand: false, fill: false, padding: 0);
+        hbox.PackStart(freehandButton, expand: false, fill: false, padding: 0);
+
+        vbox.PackStart(hbox, expand: false, fill: false, padding: 0);
+
+        drawingArea = new DrawingArea();
+        drawingArea.AddEvents((int)Gdk.EventMask.ButtonPressMask | (int)Gdk.EventMask.ButtonReleaseMask | (int)Gdk.EventMask.PointerMotionMask);
+        drawingArea.Drawn += OnDrawingAreaDrawn;
+        drawingArea.ButtonPressEvent += OnButtonPressEvent;
+        drawingArea.ButtonReleaseEvent += OnButtonReleaseEvent;
+        drawingArea.MotionNotifyEvent += OnMotionNotifyEvent;
+
+        vbox.PackStart(drawingArea, expand: true, fill: true, padding: 0);
+
+        Add(vbox);
         ShowAll();
     }
 
@@ -32,18 +60,60 @@ class MainWindow : Window
     {
         Context cr = args.Cr;
 
-        cr.LineWidth = 9;
-        cr.SetSourceRGB(0.7, 0.2, 0.0);
+        if (currentMode == DrawMode.Line && points.Count == 2)
+        {
+            cr.MoveTo(points[0].Item1, points[0].Item2);
+            cr.LineTo(points[1].Item1, points[1].Item2);
+            cr.Stroke();
+        }
+        else if (currentMode == DrawMode.Freehand || currentMode == DrawMode.Pen)
+        {
+            if (points.Count > 1)
+            {
+                cr.MoveTo(points[0].Item1, points[0].Item2);
+                for (int i = 1; i < points.Count; i++)
+                {
+                    cr.LineTo(points[i].Item1, points[i].Item2);
+                }
+                cr.Stroke();
+            }
+        }
+    }
 
-        int width = Allocation.Width;
-        int height = Allocation.Height;
+    private void OnButtonPressEvent(object o, ButtonPressEventArgs args)
+    {
+        points.Clear();
+        points.Add(Tuple.Create(args.Event.X, args.Event.Y));
+        if (currentMode != DrawMode.Freehand)
+        {
+            // For non-freehand modes, draw immediately on button press to show feedback for single clicks or starting points
+            drawingArea.QueueDraw();
+        }
+    }
 
-        cr.Translate(width / 2, height / 2);
-        cr.Arc(0, 0, 50, 0, 2 * Math.PI);
-        cr.StrokePreserve();
+    private void OnButtonReleaseEvent(object o, ButtonReleaseEventArgs args)
+    {
+        if (currentMode == DrawMode.Line)
+        {
+            points.Add(Tuple.Create(args.Event.X, args.Event.Y));
+            drawingArea.QueueDraw();
+        }
+    }
 
-        cr.SetSourceRGB(0.3, 0.4, 0.6);
-        cr.Fill();
+    private void OnMotionNotifyEvent(object o, MotionNotifyEventArgs args)
+    {
+        if (currentMode == DrawMode.Freehand && args.Event.State.HasFlag(Gdk.ModifierType.Button1Mask))
+        {
+            points.Add(Tuple.Create(args.Event.X, args.Event.Y));
+            drawingArea.QueueDraw();
+        }
+    }
+
+    private enum DrawMode
+    {
+        Pen,
+        Line,
+        Freehand
     }
 }
 
