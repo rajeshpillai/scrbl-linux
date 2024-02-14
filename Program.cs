@@ -16,7 +16,8 @@ public class DrawingApp
 public class DrawingWindow : Window
 {
     private DrawingArea drawingArea;
-    private List<Tuple<double, double>> points = new List<Tuple<double, double>>();
+    private List<Drawable> drawings = new List<Drawable>();
+    private Drawable currentDrawing;
     private DrawMode currentMode = DrawMode.Pen;
 
     public DrawingWindow() : base("Drawing Tools Example")
@@ -25,8 +26,8 @@ public class DrawingWindow : Window
         SetPosition(WindowPosition.Center);
         DeleteEvent += delegate { Application.Quit(); };
 
-        Box vbox = new Box(Orientation.Vertical, 0); // Updated to use Box with Orientation
-        Box hbox = new Box(Orientation.Horizontal, 0); // Updated to use Box with Orientation
+        Box vbox = new Box(Orientation.Vertical, 0);
+        Box hbox = new Box(Orientation.Horizontal, 0);
 
         Button penButton = new Button("Pen");
         Button lineButton = new Button("Line");
@@ -36,7 +37,6 @@ public class DrawingWindow : Window
         lineButton.Clicked += (sender, e) => currentMode = DrawMode.Line;
         freehandButton.Clicked += (sender, e) => currentMode = DrawMode.Freehand;
 
-        // Updated PackStart calls with required arguments
         hbox.PackStart(penButton, expand: false, fill: false, padding: 0);
         hbox.PackStart(lineButton, expand: false, fill: false, padding: 0);
         hbox.PackStart(freehandButton, expand: false, fill: false, padding: 0);
@@ -60,51 +60,33 @@ public class DrawingWindow : Window
     {
         Context cr = args.Cr;
 
-        if (currentMode == DrawMode.Line && points.Count == 2)
+        foreach (var drawing in drawings)
         {
-            cr.MoveTo(points[0].Item1, points[0].Item2);
-            cr.LineTo(points[1].Item1, points[1].Item2);
-            cr.Stroke();
-        }
-        else if (currentMode == DrawMode.Freehand || currentMode == DrawMode.Pen)
-        {
-            if (points.Count > 1)
-            {
-                cr.MoveTo(points[0].Item1, points[0].Item2);
-                for (int i = 1; i < points.Count; i++)
-                {
-                    cr.LineTo(points[i].Item1, points[i].Item2);
-                }
-                cr.Stroke();
-            }
+            drawing.Draw(cr);
         }
     }
 
     private void OnButtonPressEvent(object o, ButtonPressEventArgs args)
     {
-        points.Clear();
-        points.Add(Tuple.Create(args.Event.X, args.Event.Y));
-        if (currentMode != DrawMode.Freehand)
-        {
-            // For non-freehand modes, draw immediately on button press to show feedback for single clicks or starting points
-            drawingArea.QueueDraw();
-        }
+        currentDrawing = new Drawable(currentMode);
+        currentDrawing.Points.Add(new PointD(args.Event.X, args.Event.Y));
+        drawings.Add(currentDrawing);
     }
 
     private void OnButtonReleaseEvent(object o, ButtonReleaseEventArgs args)
     {
         if (currentMode == DrawMode.Line)
         {
-            points.Add(Tuple.Create(args.Event.X, args.Event.Y));
+            currentDrawing.Points.Add(new PointD(args.Event.X, args.Event.Y));
             drawingArea.QueueDraw();
         }
     }
 
     private void OnMotionNotifyEvent(object o, MotionNotifyEventArgs args)
     {
-        if (currentMode == DrawMode.Freehand && args.Event.State.HasFlag(Gdk.ModifierType.Button1Mask))
+        if ((currentMode == DrawMode.Freehand || currentMode == DrawMode.Pen) && args.Event.State.HasFlag(Gdk.ModifierType.Button1Mask))
         {
-            points.Add(Tuple.Create(args.Event.X, args.Event.Y));
+            currentDrawing.Points.Add(new PointD(args.Event.X, args.Event.Y));
             drawingArea.QueueDraw();
         }
     }
@@ -114,6 +96,42 @@ public class DrawingWindow : Window
         Pen,
         Line,
         Freehand
+    }
+
+    private class Drawable
+    {
+        public List<PointD> Points { get; private set; } = new List<PointD>();
+        public DrawMode Mode { get; private set; }
+
+        public Drawable(DrawMode mode)
+        {
+            Mode = mode;
+        }
+
+        public void Draw(Context cr)
+        {
+            if (Points.Count < 1) return;
+
+            switch (Mode)
+            {
+                case DrawMode.Pen:
+                case DrawMode.Freehand:
+                    cr.MoveTo(Points[0]);
+                    foreach (var point in Points)
+                    {
+                        cr.LineTo(point);
+                    }
+                    break;
+                case DrawMode.Line:
+                    if (Points.Count >= 2)
+                    {
+                        cr.MoveTo(Points[0]);
+                        cr.LineTo(Points[1]);
+                    }
+                    break;
+            }
+            cr.Stroke();
+        }
     }
 }
 
